@@ -16,8 +16,6 @@
 
 #define INCLUDE_AES
 
-#include <string.h>
-
 #if !defined(ENABLE_OVERLAY)
 	#include "ARMCM0.h"
 #endif
@@ -33,9 +31,12 @@
 #include "driver/crc.h"
 #include "driver/eeprom.h"
 #include "driver/gpio.h"
-#include "driver/uart.h"
+#if defined(ENABLE_UART)
+	#include "driver/uart.h"
+#endif
 #include "functions.h"
 #include "misc.h"
+#include "radio.h"
 #include "settings.h"
 #if defined(ENABLE_OVERLAY)
 	#include "sram-overlay.h"
@@ -155,10 +156,6 @@ static union
 	} __attribute__((packed));
 } __attribute__((packed)) UART_Command;
 
-static const uint8_t Obfuscation[16] = {
-	0x16, 0x6C, 0x14, 0xE6, 0x2E, 0x91, 0x0D, 0x40, 0x21, 0x35, 0xD5, 0x40, 0x13, 0x03, 0xE9, 0x80
-};
-
 uint32_t time_stamp    = 0;
 uint16_t write_index   = 0;
 bool     is_encrypted  = true;
@@ -180,7 +177,7 @@ static void SendReply(void *preply, uint16_t Size)
 		uint8_t     *pBytes = (uint8_t *)preply;
 		unsigned int i;
 		for (i = 0; i < Size; i++)
-			pBytes[i] ^= Obfuscation[i % 16];
+			pBytes[i] ^= obfuscate_array[i % 16];
 	}
 
 	Header.ID   = 0xCDAB;
@@ -190,8 +187,8 @@ static void SendReply(void *preply, uint16_t Size)
 
 	if (is_encrypted)
 	{
-		Footer.pad[0] = Obfuscation[(Size + 0) % 16] ^ 0xFF;
-		Footer.pad[1] = Obfuscation[(Size + 1) % 16] ^ 0xFF;
+		Footer.pad[0] = obfuscate_array[(Size + 0) % 16] ^ 0xFF;
+		Footer.pad[1] = obfuscate_array[(Size + 1) % 16] ^ 0xFF;
 	}
 	else
 	{
@@ -213,8 +210,8 @@ static void SendVersion(void)
 	memset(&reply, 0, sizeof(reply));
 	reply.Header.ID               = 0x0515;
 	reply.Header.Size             = sizeof(reply.Data);
-	memmove(reply.Data.Version, Version_str, slen);
-	reply.Data.has_custom_aes_key = g_has_custom_aes_key;
+	memcpy(reply.Data.Version, Version_str, slen);
+	reply.Data.has_custom_aes_key = g_has_aes_key;
 	reply.Data.password_locked    = g_password_locked;
 	reply.Data.Challenge[0]       = g_challenge[0];
 	reply.Data.Challenge[1]       = g_challenge[1];
@@ -249,7 +246,7 @@ static void cmd_0514(const uint8_t *pBuffer)
 
 	time_stamp = pCmd->time_stamp;
 
-	g_serial_config_count_down_500ms = serial_config_count_down_500ms;
+	g_serial_config_tick_500ms = serial_config_tick_500ms;
 
 	// show message
 	g_request_display_screen = DISPLAY_MAIN;
@@ -270,7 +267,7 @@ static void cmd_051B(const uint8_t *pBuffer)
 //	if (pCmd->time_stamp != time_stamp)
 //		return;
 
-	g_serial_config_count_down_500ms = serial_config_count_down_500ms;
+	g_serial_config_tick_500ms = serial_config_tick_500ms;
 
 	if (addr >= EEPROM_SIZE)
 		return;
@@ -289,11 +286,12 @@ static void cmd_051B(const uint8_t *pBuffer)
 	reply.Data.Offset = addr;
 	reply.Data.Size   = size;
 
-//	if (g_has_custom_aes_key)
+//	if (g_has_aes_key)
 //		locked = is_locked;
 
 //	if (!locked)
-		EEPROM_ReadBuffer(addr, reply.Data.Data, size);
+//		EEPROM_ReadBuffer(addr, reply.Data.Data, size);
+		memcpy(reply.Data.Data, ((uint8_t *)&g_eeprom) + addr, size);
 
 	SendReply(&reply, size + 8);
 }
@@ -303,24 +301,22 @@ static void cmd_051D(const uint8_t *pBuffer)
 {
 	const unsigned int write_size    = 8;
 	const cmd_051D_t  *pCmd          = (const cmd_051D_t *)pBuffer;
-	unsigned int       addr          = pCmd->Offset;
+	const unsigned int addr          = pCmd->Offset;
 	unsigned int       size          = pCmd->Size;
 #ifdef INCLUDE_AES
 	bool               reload_eeprom = false;
-	bool               locked        = g_has_custom_aes_key ? is_locked : g_has_custom_aes_key;
+	bool               locked        = g_has_aes_key ? is_locked : g_has_aes_key;
 #endif
 	reply_051D_t       reply;
 
 //	if (pCmd->time_stamp != time_stamp)
 //		return;
 
-	g_serial_config_count_down_500ms = serial_config_count_down_500ms;
+	g_serial_config_tick_500ms = serial_config_tick_500ms;
 
 	if (addr >= EEPROM_SIZE)
 		return;
 
-	if (size > sizeof(reply.Data))
-		size = sizeof(reply.Data);
 	if (size > (EEPROM_SIZE - addr))
 		size =  EEPROM_SIZE - addr;
 
@@ -336,11 +332,13 @@ static void cmd_051D(const uint8_t *pBuffer)
 	if (!locked)
 #endif
 	{
-		const uint8_t *data = (uint8_t *)&pCmd + sizeof(cmd_051D_t); // point to the RX'ed data to write to eeprom
 		unsigned int i;
+
 		for (i = 0; i < (size / write_size); i++)
 		{
-			const uint16_t Offset = addr + (i * write_size);
+			const unsigned int k = i * write_size;
+			const unsigned int Offset = addr + k;
+			uint8_t *data = (uint8_t *)pCmd + sizeof(cmd_051D_t) + k;
 
 			if ((Offset + write_size) > EEPROM_SIZE)
 				break;
@@ -349,19 +347,31 @@ static void cmd_051D(const uint8_t *pBuffer)
 				if (Offset >= 0x0F30 && Offset < 0x0F40)     // AES key
 					if (!is_locked)
 						reload_eeprom = true;
+			#else
+				if (Offset == 0x0F30 || Offset == 0x0F38)
+					memset(data, 0xff, 8);   // wipe the AES key
 			#endif
 
+			//#ifndef ENABLE_KILL_REVIVE
+				if (Offset == 0x0F40)
+				{	// killed flag is here
+					data[2] = false;	// remove it
+				}
+			//#endif
+
 			#ifdef ENABLE_PWRON_PASSWORD
-				if ((Offset < 0x0E98 || Offset >= 0x0EA0) || !g_password_locked || pCmd->bAllowPassword)
-					EEPROM_WriteBuffer(Offset, &pCmd->Data[i * write_size]);
+				if ((Offset < 0x0E98 || Offset >= 0x0E9C) || !g_password_locked || pCmd->allow_password)
+					EEPROM_WriteBuffer8(Offset, data);
 			#else
-				EEPROM_WriteBuffer(Offset, &data[i * write_size]);
+				if (Offset == 0x0E98)
+					memset(data, 0xff, 4);   // wipe the password 
+				EEPROM_WriteBuffer8(Offset, data);
 			#endif
 		}
 
 		#ifdef INCLUDE_AES
 			if (reload_eeprom)
-				BOARD_EEPROM_load();
+				SETTINGS_read_eeprom();
 		#endif
 	}
 
@@ -376,9 +386,9 @@ static void cmd_0527(void)
 	memset(&reply, 0, sizeof(reply));
 	reply.Header.ID             = 0x0528;
 	reply.Header.Size           = sizeof(reply.Data);
-	reply.Data.RSSI             = BK4819_ReadRegister(BK4819_REG_67) & 0x01FF;
-	reply.Data.ExNoiseIndicator = BK4819_ReadRegister(BK4819_REG_65) & 0x007F;
-	reply.Data.GlitchIndicator  = BK4819_ReadRegister(BK4819_REG_63);
+	reply.Data.RSSI             = BK4819_read_reg(0x67) & 0x01FF;
+	reply.Data.ExNoiseIndicator = BK4819_read_reg(0x65) & 0x007F;
+	reply.Data.GlitchIndicator  = BK4819_read_reg(0x63);
 
 	SendReply(&reply, sizeof(reply));
 }
@@ -404,21 +414,23 @@ static void cmd_0529(void)
 static void cmd_052D(const uint8_t *pBuffer)
 {
 	cmd_052D_t  *pCmd   = (cmd_052D_t *)pBuffer;
-	bool         locked = g_has_custom_aes_key;
+	bool         locked = g_has_aes_key;
 	uint32_t     response[4];
 	reply_052D_t reply;
 
-	g_serial_config_count_down_500ms = serial_config_count_down_500ms;
+	g_serial_config_tick_500ms = serial_config_tick_500ms;
 
 	if (!locked)
 	{
-		memmove((void *)&response, &pCmd->Response, sizeof(response));    // overcome strict compiler warning settings
-		locked = IsBadChallenge(g_custom_aes_key, g_challenge, response);
+		uint32_t aes_key[4];
+		memcpy((void *)&response, &pCmd->Response, sizeof(response));    // overcome strict compiler warning settings
+		memcpy(aes_key, g_eeprom.config.setting.aes_key, sizeof(aes_key));
+		locked = IsBadChallenge(aes_key, g_challenge, response);
 	}
 
 	if (!locked)
 	{
-		memmove((void *)&response, &pCmd->Response, sizeof(response));    // overcome strict compiler warning settings
+		memcpy((void *)&response, &pCmd->Response, sizeof(response));    // overcome strict compiler warning settings
 		locked = IsBadChallenge(g_default_aes_key, g_challenge, response);
 		if (locked)
 			try_count++;
@@ -451,21 +463,21 @@ static void cmd_052F(const uint8_t *pBuffer)
 {
 	const cmd_052F_t *pCmd = (const cmd_052F_t *)pBuffer;
 
-	g_eeprom.dual_watch                       = DUAL_WATCH_OFF;
-	g_eeprom.cross_vfo_rx_tx                  = CROSS_BAND_OFF;
-	g_eeprom.rx_vfo                           = 0;
-	g_eeprom.dtmf_side_tone                   = false;
-	g_eeprom.vfo_info[0].frequency_reverse    = false;
-	g_eeprom.vfo_info[0].pRX                  = &g_eeprom.vfo_info[0].freq_config_rx;
-	g_eeprom.vfo_info[0].pTX                  = &g_eeprom.vfo_info[0].freq_config_tx;
-	g_eeprom.vfo_info[0].tx_offset_freq_dir   = TX_OFFSET_FREQ_DIR_OFF;
-	g_eeprom.vfo_info[0].dtmf_ptt_id_tx_mode  = PTT_ID_OFF;
-	g_eeprom.vfo_info[0].dtmf_decoding_enable = false;
+	g_rx_vfo_num                               = 0;
+	g_eeprom.config.setting.dual_watch         = DUAL_WATCH_OFF;
+	g_eeprom.config.setting.cross_vfo          = CROSS_BAND_OFF;
+	g_eeprom.config.setting.dtmf.side_tone     = false;
+	g_vfo_info[0].channel.frequency_reverse    = false;
+	g_vfo_info[0].p_rx                         = &g_vfo_info[0].freq_config_rx;
+	g_vfo_info[0].p_tx                         = &g_vfo_info[0].freq_config_tx;
+	g_vfo_info[0].channel.tx_offset_dir        = TX_OFFSET_FREQ_DIR_OFF;
+	g_vfo_info[0].channel.dtmf_ptt_id_tx_mode  = PTT_ID_OFF;
+	g_vfo_info[0].channel.dtmf_decoding_enable = false;
 
-	g_serial_config_count_down_500ms = serial_config_count_down_500ms;
+	g_serial_config_tick_500ms = serial_config_tick_500ms;
 
 	#ifdef ENABLE_NOAA
-		g_is_noaa_mode = false;
+		g_noaa_mode = false;
 	#endif
 
 	if (g_current_function == FUNCTION_POWER_SAVE)
@@ -538,11 +550,11 @@ bool UART_IsCommandAvailable(void)
 	if (TailIndex < Index)
 	{
 		const uint16_t ChunkSize = sizeof(UART_DMA_Buffer) - Index;
-		memmove(UART_Command.Buffer, UART_DMA_Buffer + Index, ChunkSize);
-		memmove(UART_Command.Buffer + ChunkSize, UART_DMA_Buffer, TailIndex);
+		memcpy(UART_Command.Buffer, UART_DMA_Buffer + Index, ChunkSize);
+		memcpy(UART_Command.Buffer + ChunkSize, UART_DMA_Buffer, TailIndex);
 	}
 	else
-		memmove(UART_Command.Buffer, UART_DMA_Buffer + Index, TailIndex - Index);
+		memcpy(UART_Command.Buffer, UART_DMA_Buffer + Index, TailIndex - Index);
 
 	TailIndex = DMA_INDEX(TailIndex, 2);
 	if (TailIndex < write_index)
@@ -565,7 +577,7 @@ bool UART_IsCommandAvailable(void)
 	{
 		unsigned int i;
 		for (i = 0; i < (Size + 2u); i++)
-			UART_Command.Buffer[i] ^= Obfuscation[i % 16];
+			UART_Command.Buffer[i] ^= obfuscate_array[i % 16];
 	}
 
 	CRC = UART_Command.Buffer[Size] | (UART_Command.Buffer[Size + 1] << 8);

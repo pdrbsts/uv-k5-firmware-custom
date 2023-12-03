@@ -14,47 +14,82 @@
  *     limitations under the License.
  */
 
+#include "backlight.h"
 #include "bsp/dp32g030/gpio.h"
-#include "driver/backlight.h"
+#include "bsp/dp32g030/pwmplus.h"
+#include "bsp/dp32g030/portcon.h"
 #include "driver/gpio.h"
 #include "settings.h"
 
-// this is decremented once every 500ms
-uint16_t g_backlight_count_down = 0;
+uint16_t g_backlight_tick_10ms;
 
-void backlight_turn_on(void)
+void BACKLIGHT_init(void)
 {
-	if (g_eeprom.backlight == 0)
-		return;
+	// 48MHz / 94 / 1024 ~ 500Hz
+	const uint32_t PWM_FREQUENCY_HZ =  1000;
+	PWM_PLUS0_CLKSRC |= (CPU_CLOCK_HZ / 1024 / PWM_FREQUENCY_HZ) << 16;
+	PWM_PLUS0_PERIOD = 1023;
 
-	// turn the backlight ON
-	GPIO_SetBit(&GPIOB->DATA, GPIOB_PIN_BACKLIGHT);
-		
-	switch (g_eeprom.backlight)
+	PORTCON_PORTB_SEL0 &= ~(PORTCON_PORTB_SEL0_B6_MASK);
+	PORTCON_PORTB_SEL0 |= PORTCON_PORTB_SEL0_B6_BITS_PWMP0_CH0;
+
+	PWM_PLUS0_GEN = PWMPLUS_GEN_CH0_OE_BITS_ENABLE  | PWMPLUS_GEN_CH0_OUTINV_BITS_ENABLE;
+	PWM_PLUS0_CFG = PWMPLUS_CFG_CNT_REP_BITS_ENABLE | PWMPLUS_CFG_COUNTER_EN_BITS_ENABLE;
+}
+
+uint16_t BACKLIGHT_ticks(void)
+{
+	uint16_t ticks = 0;
+	switch (g_eeprom.config.setting.backlight_time)
 	{
-		default:
-		case 1:	// 5 sec
-			g_backlight_count_down = 5;
-			break;
-		case 2:	// 10 sec
-			g_backlight_count_down = 10;
-			break;
-		case 3:	// 20 sec
-			g_backlight_count_down = 20;
-			break;
-		case 4:	// 1 min
-			g_backlight_count_down = 60;
-			break;
-		case 5:	// 2 min
-			g_backlight_count_down = 60 * 2;
-			break;
-		case 6:	// 4 min
-			g_backlight_count_down = 60 * 4;
-			break;
-		case 7:	// always on
-			g_backlight_count_down = 0;
-			break;
+		case 1:	ticks =   5; break;  // 5 sec
+		case 2:	ticks =  10; break;  // 10 sec
+		case 3: ticks =  20; break;  // 20 sec
+		case 4: ticks =  60; break;  // 1 min
+		case 5: ticks = 120; break;  // 2 min
+		case 6: ticks = 240; break;  // 4 min
 	}
+	return ticks * 100;
+}
 
-	g_backlight_count_down *= 2;
+bool BACKLIGHT_is_on(void)
+{
+	return (PWM_PLUS0_CH0_COMP > 0) ? true : false;
+}
+
+void BACKLIGHT_set_brightness(unsigned int brightness)
+{
+	if (brightness > BACKLIGHT_MAX_BRIGHTNESS)
+		brightness = BACKLIGHT_MAX_BRIGHTNESS;
+
+	// 0 ~ 1023  logify it though
+	PWM_PLUS0_CH0_COMP = (1023ul * brightness * brightness * brightness) / (BACKLIGHT_MAX_BRIGHTNESS * BACKLIGHT_MAX_BRIGHTNESS * BACKLIGHT_MAX_BRIGHTNESS);
+	//PWM_PLUS0_SWLOAD = 1;
+}
+
+void BACKLIGHT_turn_on(const unsigned int min_secs)
+{
+	const uint16_t min_ticks = 100u * min_secs;
+	if (min_ticks > 0)
+	{
+		if (g_backlight_tick_10ms < min_ticks)
+			g_backlight_tick_10ms = min_ticks;
+		BACKLIGHT_set_brightness(BACKLIGHT_MAX_BRIGHTNESS);
+	}
+	else
+	if (g_eeprom.config.setting.backlight_time > 0)
+	{
+		g_backlight_tick_10ms = BACKLIGHT_ticks();
+		BACKLIGHT_set_brightness(BACKLIGHT_MAX_BRIGHTNESS);
+	}
+}
+
+void BACKLIGHT_turn_off(void)
+{
+	if (g_backlight_tick_10ms > BACKLIGHT_MAX_BRIGHTNESS)
+		g_backlight_tick_10ms = BACKLIGHT_MAX_BRIGHTNESS;
+
+//	g_backlight_tick_10ms = 0;
+
+	BACKLIGHT_set_brightness(g_backlight_tick_10ms);
 }

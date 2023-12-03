@@ -22,10 +22,11 @@
 #include "driver/i2c.h"
 #include "misc.h"
 
-uint8_t    g_ptt_debounce;
+int8_t     g_ptt_debounce;
 uint8_t    g_key_debounce_press;
 uint8_t    g_key_debounce_repeat;
-key_code_t g_key_prev = KEY_INVALID;
+key_code_t g_key_prev    = KEY_INVALID;
+key_code_t g_key_pressed = KEY_INVALID;
 bool       g_key_held;
 bool       g_fkey_pressed;
 bool       g_ptt_is_pressed;
@@ -124,9 +125,7 @@ key_code_t KEYBOARD_Poll(void)
 		for (i = 0, k = 0, reg = 0; i < 3 && k < 8; i++, k++)
 		{
 			uint16_t reg2;
-
-			SYSTICK_DelayUs(1);
-
+			SYSTICK_Delay250ns(4);
 			reg2 = GPIOA->DATA;
 			if (reg != reg2)
 			{	// noise
@@ -158,6 +157,8 @@ key_code_t KEYBOARD_Poll(void)
 	// Reset VOICE pins
 	GPIO_ClearBit(&GPIOA->DATA, GPIOA_PIN_KEYBOARD_6);
 	GPIO_SetBit(  &GPIOA->DATA, GPIOA_PIN_KEYBOARD_7);
+
+	g_key_pressed = Key;
 
 	return Key;
 }

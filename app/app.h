@@ -23,18 +23,12 @@
 #include "frequencies.h"
 #include "radio.h"
 
-extern const uint8_t orig_lna_short;
-extern const uint8_t orig_lna;
-extern const uint8_t orig_mixer;
-extern const uint8_t orig_pga;
-
-void     APP_EndTransmission(void);
-void     CHANNEL_Next(const bool flag, const scan_state_dir_t scan_direction);
-void     APP_StartListening(function_type_t Function, const bool reset_am_fix);
-uint32_t APP_SetFrequencyByStep(vfo_info_t *pInfo, int8_t Step);
-void     APP_Update(void);
-void     APP_TimeSlice10ms(void);
-void     APP_TimeSlice500ms(void);
+void     APP_end_tx(void);
+void     APP_stop_scan(void);
+void     APP_channel_next(const bool remember_current, const scan_state_dir_t scan_direction);
+bool     APP_start_listening(void);
+void     APP_time_slice_10ms(void);
+void     APP_time_slice_500ms(void);
 
 #endif
 

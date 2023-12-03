@@ -19,7 +19,9 @@
 
 #include "driver/keyboard.h"
 
-void MAIN_ProcessKeys(key_code_t Key, bool bKeyPressed, bool bKeyHeld);
+extern bool g_manual_scanning;
+
+void MAIN_process_key(key_code_t Key, bool bKeyPressed, bool bKeyHeld);
 
 #endif
 

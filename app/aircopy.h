@@ -29,16 +29,19 @@ enum aircopy_state_e
 };
 typedef enum aircopy_state_e aircopy_state_t;
 
-extern const uint8_t    g_aircopy_block_max;
-extern uint8_t          g_aircopy_block_number;
-extern uint8_t          g_aircopy_rx_errors;
-extern aircopy_state_t  g_aircopy_state;
-extern uint16_t         g_aircopy_fsk_buffer[36];
-extern uint8_t          g_aircopy_send_count_down_10ms;
-extern unsigned int     g_aircopy_fsk_write_index;
+extern const unsigned int g_aircopy_block_max;
+extern unsigned int       g_aircopy_block_number;
+extern uint8_t            g_aircopy_rx_errors_fsk_crc;
+extern uint8_t            g_aircopy_rx_errors_magic;
+extern uint8_t            g_aircopy_rx_errors_crc;
+extern aircopy_state_t    g_aircopy_state;
+extern uint16_t           g_fsk_buffer[36];
+extern unsigned int       g_fsk_write_index;
+extern uint16_t           g_fsk_tx_timeout_10ms;
 
-void AIRCOPY_SendMessage(const uint8_t request_packet);
-void AIRCOPY_StorePacket(void);
-void AIRCOPY_ProcessKeys(key_code_t key, bool key_pressed, bool key_held);
+void AIRCOPY_init(void);
+void AIRCOPY_process_fsk_tx_10ms(void);
+void AIRCOPY_process_fsk_rx_10ms(void);
+void AIRCOPY_process_key(key_code_t key, bool key_pressed, bool key_held);
 
 #endif

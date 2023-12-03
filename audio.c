@@ -14,6 +14,9 @@
  *     limitations under the License.
  */
 
+#ifdef ENABLE_AIRCOPY
+	#include "app/aircopy.h"
+#endif
 #ifdef ENABLE_FMRADIO
 	#include "app/fm.h"
 #endif
@@ -26,8 +29,12 @@
 #include "driver/gpio.h"
 #include "driver/system.h"
 #include "driver/systick.h"
+#if defined(ENABLE_UART) && defined(ENABLE_UART_DEBUG)
+	#include "driver/uart.h"
+#endif
 #include "functions.h"
 #include "misc.h"
+#include "radio.h"
 #include "settings.h"
 #include "ui/ui.h"
 
@@ -62,7 +69,7 @@
 	voice_id_t        g_voice_id[8];
 	uint8_t           g_voice_read_index;
 	uint8_t           g_voice_write_index;
-	volatile uint16_t g_count_down_to_play_next_voice_10ms;
+	volatile uint16_t g_play_next_voice_tick_10ms;
 	volatile bool     g_flag_play_queued_voice;
 	voice_id_t        g_another_voice_id = VOICE_ID_INVALID;
 
@@ -70,34 +77,53 @@
 
 beep_type_t g_beep_to_play = BEEP_NONE;
 
+void AUDIO_set_mod_mode(const mod_mode_t mode)
+{
+	BK4819_af_type_t af_mode;
+	switch (mode)
+	{
+		default:
+		case MOD_MODE_FM:  af_mode = BK4819_AF_FM;        break;
+		case MOD_MODE_AM:  af_mode = BK4819_AF_AM;        break;
+		case MOD_MODE_DSB: af_mode = BK4819_AF_BASEBAND1; break;
+	}
+	BK4819_SetAF(af_mode);
+}
+
 void AUDIO_PlayBeep(beep_type_t Beep)
 {
-	uint16_t ToneConfig;
-	uint16_t ToneFrequency;
-	uint16_t Duration;
+	const uint16_t tone_val = BK4819_read_reg(0x71);
+//	const uint16_t af_val   = BK4819_read_reg(0x47);
+	uint16_t       ToneFrequency;
+	uint16_t       Duration;
 
-	if (Beep != BEEP_880HZ_60MS_TRIPLE_BEEP &&
-	    Beep != BEEP_500HZ_60MS_DOUBLE_BEEP &&
-	    Beep != BEEP_440HZ_500MS &&
-	    Beep != BEEP_880HZ_200MS &&
-	    Beep != BEEP_880HZ_500MS &&
-	   !g_eeprom.beep_control)
-		return;
-
-	#ifdef ENABLE_AIRCOPY
-		if (g_screen_to_display == DISPLAY_AIRCOPY)
+	if (g_eeprom.config.setting.beep_control == 0)
+	{	// beep not enabled
+		if (Beep != BEEP_880HZ_60MS_TRIPLE_BEEP &&
+			Beep != BEEP_500HZ_60MS_DOUBLE_BEEP &&
+			Beep != BEEP_440HZ_500MS &&
+			Beep != BEEP_880HZ_200MS &&
+			Beep != BEEP_880HZ_500MS)
+		{
 			return;
+		}
+	}
+
+	if (g_flash_light_state == FLASHLIGHT_SOS ||
+	    g_current_function == FUNCTION_RECEIVE ||
+	    g_monitor_enabled ||
+	    g_squelch_open ||
+	    GPIO_CheckBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER))
+	{
+		return;
+	}
+	
+	#ifdef ENABLE_AIRCOPY
+//		if (g_current_display_screen == DISPLAY_AIRCOPY || g_aircopy_state != AIRCOPY_READY)
+//			return;
 	#endif
-
-	if (g_current_function == FUNCTION_RECEIVE)
-		return;
-
-	if (g_current_function == FUNCTION_MONITOR)
-		return;
-
-	ToneConfig = BK4819_ReadRegister(BK4819_REG_71);
-
-	GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+		
+//	GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 	if (g_current_function == FUNCTION_POWER_SAVE && g_rx_idle_mode)
 		BK4819_RX_TurnOn();
@@ -109,7 +135,13 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		#endif
 	#endif
 
+	#if defined(ENABLE_UART) && defined(ENABLE_UART_DEBUG)
+//		UART_printf("beep %u\r\n", (unsigned int)Beep);
+	#endif
+	
+	// whats this for ?
 	SYSTEM_DelayMs(20);
+//	SYSTEM_DelayMs(2);
 
 	switch (Beep)
 	{
@@ -117,17 +149,21 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		case BEEP_NONE:
 			ToneFrequency = 220;
 			break;
+
 		case BEEP_1KHZ_60MS_OPTIONAL:
 			ToneFrequency = 1000;
 			break;
+
 		case BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL:
 		case BEEP_500HZ_60MS_DOUBLE_BEEP:
 			ToneFrequency = 500;
 			break;
+
 		case BEEP_440HZ_40MS_OPTIONAL:
 		case BEEP_440HZ_500MS:
 			ToneFrequency = 440;
 			break;
+
 		case BEEP_880HZ_40MS_OPTIONAL:
 		case BEEP_880HZ_60MS_TRIPLE_BEEP:
 		case BEEP_880HZ_200MS:
@@ -136,16 +172,12 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 			break;
 	}
 
-	BK4819_PlayTone(ToneFrequency, true);
+	BK4819_start_tone(ToneFrequency, 10, false, true);
 
 	SYSTEM_DelayMs(2);
-
-	GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+	GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 	SYSTEM_DelayMs(60);
-
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wimplicit-fallthrough="
 
 	switch (Beep)
 	{
@@ -155,12 +187,16 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 			BK4819_EnterTxMute();
 			SYSTEM_DelayMs(20);
 
+			// Fallthrough
+
 		case BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL:
 		case BEEP_500HZ_60MS_DOUBLE_BEEP:
 			BK4819_ExitTxMute();
 			SYSTEM_DelayMs(60);
 			BK4819_EnterTxMute();
 			SYSTEM_DelayMs(20);
+
+			// Fallthrough
 
 		case BEEP_1KHZ_60MS_OPTIONAL:
 			BK4819_ExitTxMute();
@@ -186,25 +222,21 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 			break;
 	}
 
-	#pragma GCC diagnostic pop
-
 	SYSTEM_DelayMs(Duration);
 	BK4819_EnterTxMute();
-	SYSTEM_DelayMs(20);
+	SYSTEM_DelayMs(2);
 
-	GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+	GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 	#ifdef ENABLE_VOX
-		g_vox_resume_count_down = 80;
+		g_vox_resume_tick_10ms = 80;   // 800ms
 	#endif
 
-	SYSTEM_DelayMs(5);
+	SYSTEM_DelayMs(2);
 	BK4819_TurnsOffTones_TurnsOnRX();
-	SYSTEM_DelayMs(5);
-	BK4819_WriteRegister(BK4819_REG_71, ToneConfig);
+	SYSTEM_DelayMs(2);
 
-	if (g_enable_speaker)
-		GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+	BK4819_write_reg(0x71, tone_val);
 
 	#ifdef ENABLE_FMRADIO
 		if (g_fm_radio_mode)
@@ -212,7 +244,14 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 	#endif
 
 	if (g_current_function == FUNCTION_POWER_SAVE && g_rx_idle_mode)
+	{
 		BK4819_Sleep();
+	}
+	else
+	if (g_squelch_open || g_monitor_enabled)
+	{
+		GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
+	}
 }
 
 #ifdef ENABLE_VOICE
@@ -221,9 +260,9 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 	{
 		unsigned int i;
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF)
 			return;
-		
+
 		GPIO_SetBit(&GPIOA->DATA, GPIOA_PIN_VOICE_0);
 		SYSTEM_DelayMs(20);
 		GPIO_ClearBit(&GPIOA->DATA, GPIOA_PIN_VOICE_0);
@@ -234,12 +273,12 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 				GPIO_ClearBit(&GPIOA->DATA, GPIOA_PIN_VOICE_1);
 			else
 				GPIO_SetBit(&GPIOA->DATA, GPIOA_PIN_VOICE_1);
-			SYSTICK_DelayUs(1000);
+			SYSTICK_Delay250us(4000);
 			GPIO_SetBit(&GPIOA->DATA, GPIOA_PIN_VOICE_0);
-			SYSTICK_DelayUs(1200);
+			SYSTICK_Delay250us(4800);
 			GPIO_ClearBit(&GPIOA->DATA, GPIOA_PIN_VOICE_0);
 			VoiceID <<= 1;
-			SYSTICK_DelayUs(200);
+			SYSTICK_Delay250us(800);
 		}
 	}
 
@@ -248,10 +287,10 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		uint8_t Delay;
 		uint8_t VoiceID = g_voice_id[0];
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF || g_voice_write_index == 0)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF || g_voice_write_index == 0)
 			goto Bailout;
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_CHINESE)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_CHINESE)
 		{	// Chinese
 			if (VoiceID >= ARRAY_SIZE(VoiceClipLengthChinese))
 				goto Bailout;
@@ -269,10 +308,10 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		}
 
 		#ifdef MUTE_AUDIO_FOR_VOICE
-			if (g_current_function == FUNCTION_RECEIVE || g_current_function == FUNCTION_MONITOR)
+			if (g_current_function == FUNCTION_RECEIVE)
 				BK4819_SetAF(BK4819_AF_MUTE);
 		#endif
-			
+
 		#ifdef ENABLE_FMRADIO
 			#ifdef MUTE_AUDIO_FOR_VOICE
 				if (g_fm_radio_mode)
@@ -280,14 +319,14 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 			#endif
 		#endif
 
-		GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+		GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 		#ifdef ENABLE_VOX
-			g_vox_resume_count_down = 2000;
+			g_vox_resume_tick_10ms = 2000;
 		#endif
 
 		SYSTEM_DelayMs(5);
-		
+
 		AUDIO_PlayVoice(VoiceID);
 
 		if (g_voice_write_index == 1)
@@ -297,30 +336,30 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		{
 			SYSTEM_DelayMs(Delay * 10);
 
-			if (g_current_function == FUNCTION_RECEIVE || g_current_function == FUNCTION_MONITOR)
-				BK4819_SetAF(g_rx_vfo->am_mode ? BK4819_AF_AM : BK4819_AF_FM);
-
+			if (g_current_function == FUNCTION_RECEIVE)
+				AUDIO_set_mod_mode(g_rx_vfo->channel.mod_mode);
+			
 			#ifdef ENABLE_FMRADIO
 				if (g_fm_radio_mode)
 					BK1080_Mute(false);
 			#endif
 
-			if (!g_enable_speaker)
-				GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+			if (!g_squelch_open && !g_monitor_enabled)
+				GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 			g_voice_write_index    = 0;
 			g_voice_read_index     = 0;
 
 			#ifdef ENABLE_VOX
-				g_vox_resume_count_down = 80;
+				g_vox_resume_tick_10ms = 80;
 			#endif
 
 			return;
 		}
 
-		g_voice_read_index                   = 1;
-		g_count_down_to_play_next_voice_10ms = Delay;
-		g_flag_play_queued_voice             = false;
+		g_voice_read_index          = 1;
+		g_play_next_voice_tick_10ms = Delay;
+		g_flag_play_queued_voice    = false;
 
 		return;
 
@@ -331,13 +370,13 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 
 	void AUDIO_SetVoiceID(uint8_t Index, voice_id_t VoiceID)
 	{
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF || Index == 0)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF || Index == 0)
 		{
 			g_voice_write_index = 0;
 			g_voice_read_index  = 0;
 		}
 
-		if (g_eeprom.voice_prompt != VOICE_PROMPT_OFF && Index < ARRAY_SIZE(g_voice_id))
+		if (g_eeprom.config.setting.voice_prompt != VOICE_PROMPT_OFF && Index < ARRAY_SIZE(g_voice_id))
 		{
 			g_voice_id[Index] = VoiceID;
 			g_voice_write_index++;
@@ -350,13 +389,13 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		uint8_t  Result;
 		uint8_t  Count;
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF || Index == 0)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF || Index == 0)
 		{
 			g_voice_write_index = 0;
 			g_voice_read_index  = 0;
 		}
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF)
 			return 0;
 
 		Count     = 0;
@@ -391,17 +430,17 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 		uint8_t Delay;
 		bool    Skip = false;
 
-		if (g_eeprom.voice_prompt == VOICE_PROMPT_OFF)
+		if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_OFF)
 		{
 			g_voice_write_index = 0;
 			g_voice_read_index  = 0;
 			return;
 		}
 
-		if (g_voice_read_index != g_voice_write_index && g_eeprom.voice_prompt != VOICE_PROMPT_OFF)
+		if (g_voice_read_index != g_voice_write_index && g_eeprom.config.setting.voice_prompt != VOICE_PROMPT_OFF)
 		{
 			VoiceID = g_voice_id[g_voice_read_index];
-			if (g_eeprom.voice_prompt == VOICE_PROMPT_CHINESE)
+			if (g_eeprom.config.setting.voice_prompt == VOICE_PROMPT_CHINESE)
 			{
 				if (VoiceID < ARRAY_SIZE(VoiceClipLengthChinese))
 				{
@@ -431,11 +470,11 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 
 				AUDIO_PlayVoice(VoiceID);
 
-				g_count_down_to_play_next_voice_10ms = Delay;
+				g_play_next_voice_tick_10ms = Delay;
 				g_flag_play_queued_voice           = false;
 
 				#ifdef ENABLE_VOX
-					g_vox_resume_count_down = 2000;
+					g_vox_resume_tick_10ms = 2000;
 				#endif
 
 				return;
@@ -444,22 +483,22 @@ void AUDIO_PlayBeep(beep_type_t Beep)
 
 		// ***********************
 		// unmute the radios audio
-		
-		if (g_current_function == FUNCTION_RECEIVE || g_current_function == FUNCTION_MONITOR)
-			BK4819_SetAF(g_rx_vfo->am_mode ? BK4819_AF_AM : BK4819_AF_FM);
+
+		if (g_current_function == FUNCTION_RECEIVE)
+			AUDIO_set_mod_mode(g_rx_vfo->channel.mod_mode);
 		
 		#ifdef ENABLE_FMRADIO
 			if (g_fm_radio_mode)
 				BK1080_Mute(false);
 		#endif
 
-		if (!g_enable_speaker)
-			GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_AUDIO_PATH);
+		if (!g_squelch_open && !g_monitor_enabled)
+			GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_SPEAKER);
 
 		// **********************
-		
+
 		#ifdef ENABLE_VOX
-			g_vox_resume_count_down = 80;
+			g_vox_resume_tick_10ms = 80;
 		#endif
 
 		g_voice_write_index    = 0;

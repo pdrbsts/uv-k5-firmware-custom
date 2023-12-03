@@ -21,7 +21,7 @@
 
 enum dcs_code_type_e
 {
-	CODE_TYPE_OFF = 0,
+	CODE_TYPE_NONE = 0,
 	CODE_TYPE_CONTINUOUS_TONE,
 	CODE_TYPE_DIGITAL,
 	CODE_TYPE_REVERSE_DIGITAL
@@ -30,12 +30,12 @@ enum dcs_code_type_e
 typedef enum dcs_code_type_e dcs_code_type_t;
 
 enum {
-	CDCSS_POSITIVE_CODE = 1U,
-	CDCSS_NEGATIVE_CODE = 2U,
+	CDCSS_POSITIVE_CODE = 1u,
+	CDCSS_NEGATIVE_CODE = 2u,
 };
 
-extern const uint16_t CTCSS_OPTIONS[50];
-extern const uint16_t DCS_OPTIONS[104];
+extern const uint16_t CTCSS_TONE_LIST[50];
+extern const uint16_t DCS_CODE_LIST[104];
 
 uint32_t DCS_GetGolayCodeWord(dcs_code_type_t code_type, uint8_t Option);
 uint8_t DCS_GetCdcssCode(uint32_t Code);

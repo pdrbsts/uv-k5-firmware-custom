@@ -16,8 +16,6 @@
 
 #ifdef ENABLE_PWRON_PASSWORD
 
-#include <string.h>
-
 #include "ARMCM0.h"
 #include "app/uart.h"
 #include "audio.h"
@@ -50,8 +48,12 @@ static void Render(void)
 
 void UI_DisplayLock(void)
 {
-	key_code_t  Key;
-	beep_type_t Beep;
+	unsigned int g_debounce_counter = 0;
+//	bool         g_key_being_held   = false;
+	key_code_t   g_key_reading_0    = KEY_INVALID;
+//	key_code_t   g_key_reading_1;
+	key_code_t   Key;
+	beep_type_t  Beep;
 
 	g_update_display = true;
 
@@ -73,11 +75,11 @@ void UI_DisplayLock(void)
 			{
 				if (Key == KEY_INVALID)
 				{
-					g_key_reading_1 = KEY_INVALID;
+//					g_key_reading_1 = KEY_INVALID;
 				}
 				else
 				{
-					g_key_reading_1 = Key;
+//					g_key_reading_1 = Key;
 
 					switch (Key)
 					{
@@ -91,7 +93,7 @@ void UI_DisplayLock(void)
 						case KEY_7:
 						case KEY_8:
 						case KEY_9:
-							INPUTBOX_Append(Key - KEY_0);
+							INPUTBOX_append(Key - KEY_0);
 
 							if (g_input_box_index < 6)   // 6 frequency digits
 							{
@@ -105,7 +107,7 @@ void UI_DisplayLock(void)
 
 								NUMBER_Get(g_input_box, &Password);
 
-								if ((g_eeprom.power_on_password * 100) == Password)
+								if ((g_eeprom.config.setting.power_on_password * 100) == Password)
 								{
 									AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL);
 									return;
@@ -135,13 +137,13 @@ void UI_DisplayLock(void)
 					}
 				}
 
-				g_key_being_held = false;
+//				g_key_being_held = false;
 			}
 		}
 		else
 		{
 			g_debounce_counter = 0;
-			g_key_reading_0     = Key;
+			g_key_reading_0    = Key;
 		}
 
 		if (UART_IsCommandAvailable())

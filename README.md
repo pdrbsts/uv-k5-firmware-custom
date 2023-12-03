@@ -4,88 +4,117 @@ This repository is a cloned and customized version of DualTachyon's open firmwar
 
 https://github.com/DualTachyon/uv-k5-firmware .. a cool achievement !
 
-Use this firmware/code ENTIRELY at your own risk. This firmware is totally experimental, and at
-times will go completely tits up (ie, break your radio) - an entirely common occurance when playing
-around with experimental code.
+Use this firmware/code ENTIRELY at your own risk. This firmware is totally experimental, and at times will go completely tits up (break your radio).
 
-There is absolutely no guarantee that it will work in any way shape or form on your radio(s), it may
-even brick your radio(s), at which point, maybe find a quiet corner to sob your hert out in.
+There is absolutely no guarantee that it will work in any way shape or form on your radio(s), it may even brick your radio(s).
 
-## Radio performance
+You're on your own.
 
-Please note that the Quansheng UV-Kx radios are not professional quality transceivers, their
-performance is strictly limited. The RX front end has no track-tuned band pass filtering
-at all, and so are wide band/wide open to any and all signals over a large frequency range.
+NO REFUNDS, ever !
 
-Using the radio in high intensity RF environments will most likely make reception anything but
-easy (AM mode will suffer far more than FM ever will), the receiver simply doesn't have a
-great dynamic range, which results in distorted AM audio with stronger RX'ed signals.
-There is nothing more anyone can do in firmware/software to improve that, once the RX gain
-adjustment I do (AM fix) reaches the hardwares limit, your AM RX audio will be all but
-non-existant (just like Quansheng's firmware).
-On the other hand, FM RX audio will/should be fine.
+## Observed radio boot problems
+
+After having two UV-K5(8) radios for a while now, and I don't know how many programming lead insertions/deinsertions (lots n lots!) both radios are now having trouble booting up into either the bootloader and/or the firmware.
+
+I suspect the reason being something to do with the the 3.5mm/2.5mm mic jack sockets or the volume control pot, either that or broken thru-hole plating in the PCB or such like.
+
+Need to find matching replacements to confirm this though (or just temp short the terminals that are suppose to be shorted at power on).
+
+<p float="left">
+<img src="/images/top.png" height=500 />
+<img src="/images/bot.png" height=500 />
+</p>
+
+# Radio performance
+
+Please note that the Quansheng UV-Kx radios are not professional quality transceivers, their performance is strictly limited. The RX front end has no track-tuned band pass filtering at all, and so are wide band/wide open to any and all signals over a large frequency range.
 
 But, they are nice toys for the price, fun to play with.
 
 # User customization
 
-You can customize the firmware by enabling/disabling various compile options, this allows
-us to remove certain firmware features in order to make room in the flash for others.
-You'll find the options at the top of "Makefile" ('0' = disable, '1' = enable) ..
+You can customize the firmware by enabling/disabling various compile options, this allows us to remove certain firmware features in order to make room in the flash for others.
+You'll find the options at the top of "Makefile" ('0' = remove code, '1' = include code) ..
 
 ```
-ENABLE_CLANG                  := 0     **experimental, builds with clang instead of gcc (LTO will be disabled if you enable this)
-ENABLE_SWD                    := 0       only needed if using CPU's SWD port (debugging/programming)
-ENABLE_OVERLAY                := 0       cpu FLASH stuff, not needed
-ENABLE_LTO                    := 0     **experimental, reduces size of compiled firmware but might break EEPROM reads (OVERLAY will be disabled if you enable this)
-ENABLE_UART                   := 1       without this you can't configure radio via PC
-ENABLE_UART_DEBUG             := 0       just for code debugging, it sends debug info along the USB serial connection (programming lead)
-ENABLE_AIRCOPY                := 1       clone radio-to-radio via RF
-ENABLE_AIRCOPY_FREQ           := 1       remember what you use for the aircopy frequency
-ENABLE_FMRADIO                := 1       WBFM VHF broadcast band receiver
-ENABLE_NOAA                   := 1       everything NOAA (only of any use in the USA)
-ENABLE_VOICE                  := 0       want to hear voices ?
-ENABLE_MUTE_RADIO_FOR_VOICE   := 1       mute the radios audio when a voice is playing
-ENABLE_VOX                    := 1       voice operated transmission
-ENABLE_ALARM                  := 1       TX alarms
-ENABLE_1750HZ                 := 1       side key 1750Hz TX tone (older style repeater access)
-ENABLE_PWRON_PASSWORD         := 0       '1' = allow power-on password
-ENABLE_RESET_AES_KEY          := 1       '1' = reset/clear the AES key stored in the eeprom
-ENABLE_BIG_FREQ               := 0       big font frequencies (like original QS firmware)
-ENABLE_SMALL_BOLD             := 1       bold channel name/no. (when name + freq channel display mode)
-ENABLE_KEEP_MEM_NAME          := 1       maintain channel name when (re)saving memory channel
-ENABLE_WIDE_RX                := 1       full 18MHz to 1300MHz RX (though front-end/PA not designed for full range)
-ENABLE_1250HZ_STEP            := 1       enable smaller 1.25kHz frequency steps
-ENABLE_TX_WHEN_AM             := 0       allow TX (always FM) when RX is set to AM
-ENABLE_F_CAL_MENU             := 0       enable/disable the radios hidden frequency calibration menu
-ENABLE_CTCSS_TAIL_PHASE_SHIFT := 1       standard CTCSS tail phase shift rather than QS's own 55Hz tone method
-ENABLE_BOOT_BEEPS             := 0       gives user audio feedback on volume knob position at boot-up
-ENABLE_SHOW_CHARGE_LEVEL      := 0       show the charge level when the radio is on charge
-ENABLE_REVERSE_BAT_SYMBOL     := 1       mirror the battery symbol on the status bar (+ pole on the right)
-ENABLE_CODE_SCAN_TIMEOUT      := 0       timeout if CTCSS/CDCSS is not found
-ENABLE_FREQ_CODE_SCAN_TIMEOUT := 1       timeout if CTCSS/CDCSS is not found after a successful frequency scan
-ENABLE_FREQ_CODE_ROUNDING     := 0       rounds the detected RF frequency to the nearest step size in use - F+4 scan mode
-ENABLE_AM_FIX                 := 1       dynamically adjust the front end gains when in AM mode to helo prevent AM demodulator saturation, ignore the on-screen RSSI level (for now)
-ENABLE_AM_FIX_SHOW_DATA       := 1       show debug data for the AM fix (still tweaking it)
-ENABLE_SQUELCH_MORE_SENSITIVE := 1       make squelch levels a little bit more sensitive - I plan to let user adjust the values themselves
-ENABLE_FASTER_CHANNEL_SCAN    := 1       increases the channel scan speed, but the squelch is also made more twitchy
-ENABLE_RSSI_BAR               := 1       enable a dBm/Sn RSSI bar graph level inplace of the little antenna symbols
-ENABLE_SHOW_TX_TIMEOUT        := 0       show the remainng TX time
-ENABLE_AUDIO_BAR              := 1       experimental, display an audo bar level when TX'ing, includes remaining TX time (in seconds)
-ENABLE_COPY_CHAN_TO_VFO       := 1       copy current channel into the other VFO. Long press Menu key ('M')
-#ENABLE_BAND_SCOPE            := 0       not yet implemented - spectrum/pan-adapter
-#ENABLE_SINGLE_VFO_CHAN       := 0       not yet implemented - single VFO on display when possible
+ENABLE_CLANG                     := 0     **experimental, builds with clang instead of gcc (LTO will be disabled if you enable this)
+ENABLE_SWD                       := 0       only needed if using CPU's SWD port (debugging/programming)
+ENABLE_OVERLAY                   := 0       cpu FLASH stuff, not needed
+ENABLE_LTO                       := 1     **experimental, reduces size of compiled firmware but might break EEPROM reads (OVERLAY will be disabled if you enable this)
+ENABLE_UART                      := 1       without this you can't configure radio via PC
+ENABLE_UART_DEBUG                := 0       just for code debugging, it sends debug info along the USB serial connection (programming lead)
+ENABLE_AIRCOPY                   := 1       clone radio-to-radio via RF
+ENABLE_AIRCOPY_REMEMBER_FREQ     := 1       remember the aircopy frequency
+ENABLE_AIRCOPY_RX_REBOOT         := 0       auto reboot on an aircopy successful RX completion
+ENABLE_FMRADIO_64_76             := 0       enable FM radio   64MHz ~ 76MHz
+ENABLE_FMRADIO_76_90             := 0       enable FM radio   76MHz ~ 90MHz
+ENABLE_FMRADIO_76_108            := 0       enable FM radio   76MHz ~ 108MHz
+ENABLE_FMRADIO_875_108           := 1       enable FM radio 87.5MHz ~ 108MHz
+ENABLE_FMRADIO_64_108            := 0       enable the FM radios full frequency range
+ENABLE_NOAA                      := 0       everything NOAA (only of any use in the USA)
+ENABLE_VOICE                     := 0       want to hear voices ?
+ENABLE_MUTE_RADIO_FOR_VOICE      := 1       mute the radios audio when a voice is playing
+ENABLE_VOX                       := 0       voice operated transmission
+ENABLE_VOX_MORE_SENSITIVE        := 1       make VOX more sensitive
+ENABLE_ALARM                     := 0       TX alarms
+ENABLE_1750HZ                    := 0       side key 1750Hz TX tone (older style repeater access)
+ENABLE_MDC1200                   := 0       enable MDC1200 TX/RX + menu TX option
+ENABLE_MDC1200_SHOW_OP_ARG       := 1       show RX opcode and argument values when MDC1200 is RX'ed
+ENABLE_MDC1200_SIDE_BEEP         := 1       enable short side tone/beep when MDC1200 is sent - so user knows when they can start taking after PTT pressed
+ENABLE_PWRON_PASSWORD            := 0       include power-on password code
+ENABLE_RESET_AES_KEY             := 1       '1' = reset/clear the AES key stored in the eeprom (only if it's set)
+ENABLE_BIG_FREQ                  := 0       big font frequencies (like original QS firmware)
+ENABLE_DTMF_LIVE_DECODER         := 0       enable the live DTMF display/decoder .. adds a menu option
+ENABLE_SHOW_FREQS_CHAN           := 1       show the channel name under the frequency if the frequency is found in a channel
+ENABLE_SMALL_BOLD                := 1       bold channel name/no. (when name + freq channel display mode)
+ENABLE_TRIM_TRAILING_ZEROS       := 1       trim away any trailing zeros on frequencies
+ENABLE_WIDE_RX                   := 1       full 18MHz to 1300MHz RX (though front-end/PA not designed for full range)
+ENABLE_TX_WHEN_AM                := 0       allow TX (always FM) when RX is set to AM
+ENABLE_F_CAL_MENU                := 0       enable frequency calibration hidden menu
+ENABLE_FM_DEV_CAL_MENU           := 0       enable FM deviation calibration hidden menu
+ENABLE_TX_UNLOCK_MENU            := 0       allow TX everywhere EXCEPT airband (108~137) .. TX harmonic content will cause interference to other services, do so entirely at your own risk !
+ENABLE_TX_POWER_CAL_MENU         := 0       used to compute the TX power register values .. leave at '0'
+ENABLE_TX_POWER_FIX              := 1       fix the TX output power, L ~ 10mW, M ~ 500mW, H ~ 4W, U ~ user settable
+ENABLE_CTCSS_TAIL_PHASE_SHIFT    := 0       standard CTCSS tail phase shift rather than QS's own 55Hz tone method
+ENABLE_CONTRAST                  := 0       add contrast menu
+ENABLE_BOOT_BEEPS                := 0       gives user audio feedback on volume knob position at boot-up
+ENABLE_DTMF_CALL_FLASH_LIGHT     := 1       flash the flash light LED when a DTMF call is received
+ENABLE_FLASH_LIGHT_SOS_TONE      := 1       also do SOS in morse
+ENABLE_SHOW_CHARGE_LEVEL         := 0       show the charge level when the radio is on charge
+ENABLE_REVERSE_BAT_SYMBOL        := 1       mirror the battery symbol on the status bar (+ pole on the right)
+ENABLE_FREQ_SEARCH_LNA           := 0       keep this disabled
+ENABLE_FREQ_SEARCH_TIMEOUT       := 0       timeout if FREQ not found when using F+4 search function
+ENABLE_CODE_SEARCH_TIMEOUT       := 0       timeout if CTCSS/CDCSS not found when using F+* search function
+ENABLE_SCAN_IGNORE_LIST          := 1       ignore selected frequencies when scanning - add freqs to list with short */scan button when freq scanning, remove freq from list with long press MENU when not scanning
+ENABLE_SCAN_RANGES               := 0       adds menu option to auto select frequency scan range/step depending on your initial frequency
+ENABLE_KILL_REVIVE               := 0       include kill and revive code
+ENABLE_AM_FIX                    := 1       dynamically adjust the front end gains when in AM mode to help prevent AM demodulator saturation, ignore the on-screen RSSI level (for now)
+ENABLE_AM_FIX_SHOW_DATA          := 1       show debug data for the AM fix (still tweaking it)
+ENABLE_SQUELCH_MORE_SENSITIVE    := 1       make squelch levels a little bit more sensitive - I plan to let user adjust the values themselves
+ENABLE_SQ_OPEN_WITH_UP_DN_BUTTS  := 1       open the squelch when holding down UP or DN buttons when in frequency mode
+ENABLE_FASTER_CHANNEL_SCAN       := 1       increase the channel scan speed, but also make the squelch more twitchy
+ENABLE_COPY_CHAN_TO_VFO_TO_CHAN  := 1       long press M, copy channel to VFO, or VFO to channel
+ENABLE_TX_AUDIO_BAR              := 1       enable a menu option for showing a TX audio level bar
+ENABLE_SIDE_BUTT_MENU            := 1       enable menu option for configuring the programmable side buttons
+ENABLE_KEYLOCK                   := 1       enable keylock menu option + keylock code
+ENABLE_PANADAPTER                := 0       centered on the selected VFO RX frequency, only shows if dual-watch is disabled
+ENABLE_PANADAPTER_PEAK_FREQ      := 0       show the peak panadapter frequency
+ENABLE_SINGLE_VFO_CHAN           := 1       switch to single VFO display when dual-watch and cross-VFO are disabled
 ```
 
 # New/modified function keys
 
-* Long-press 'M' .. Copy selected channel into same VFO, then switch VFO to frequency mode
+* Long-press 'M' ... Remove current frequency from ignore list (only if it's in the ignore frequency list)
+* Long-press 'M' ... Copy current frequency into a channel (takes you into the channel save menu)
+* Long-press 'M' ... Copy current channel into the same VFO, then switch the VFO to frequency mode
 *
-* Long-press '7' .. Toggle selected channel scanlist setting .. if VOX  is disabled in Makefile
+* Long-press '5' ... Toggle selected channel scanlist setting (if NOAA is disabled in Makefile)
 * or
-* Long-press '5' .. Toggle selected channel scanlist setting .. if NOAA is disabled in Makefile
+* Long-press '7' ... Toggle selected channel scanlist setting (if VOX  is disabled in Makefile)
 *
-* Long-press '*' .. Start scanning, then toggles the scanning between scanlists 1, 2 or ALL channels
+* Long-press '*' ... Start scanning, then toggles the scanning between scanlists 1, 2 or ALL channels
+*
+* Short-press '*' .. Add current frequency to the frequency ignore list (only if in frequency scan mode)
 
 # Edit channel/memory name
 
@@ -101,10 +130,9 @@ ENABLE_COPY_CHAN_TO_VFO       := 1       copy current channel into the other VFO
 
 Press the Exit button at any time to cancel the edit and return to the main menu.
 
-Sounds a lot/complicated but once you done it a couple of times you'll be fine (hopefully).
+Sounds complicated but once you done it a couple of times you'll be fine.
 
-When you're editing the name, you can enter digits (0 ~ 9) directly without having to use the up/down
-buttons to find them.
+When you're editing the name, you can enter digits (0 ~ 9) directly without having to use the up/down buttons to find them.
 
 # Some changes made from the Quansheng firmware
 
@@ -117,7 +145,12 @@ buttons to find them.
 * Better backlight times (inc always on)
 * Live DTMF decoder option, though the decoder needs some coeff tuning changes to decode other radios it seems
 * Various menu re-wordings (trying to reduce 'WTH does that mean ?')
+* AIRCOPY RX'ing radio now requests packet resends from TX'ing radio if RX'ed packet is lost/corrupted
 * ..
+
+# Symbol information
+
+<img src="/images/symbols.png" />
 
 # Compiler
 
@@ -141,6 +174,7 @@ To compile directly in windows without the need of a linux virtual machine:
 ```
 1. Download and install "gcc-arm-none-eabi-10.3-2021.10-win32.exe" from https://developer.arm.com/downloads/-/gnu-rm
 2. Download and install "gnu_make-3.81.exe" from https://gnuwin32.sourceforge.net/packages/make.htm
+3. If need be (probably not), also download Dependency.zip that includes the library files from https://gnuwin32.sourceforge.net/packages/make.htm
 
 3. You may need to (I didn't) manualy add gcc path to your OS environment PATH.
    ie add C:\Program Files (x86)\GNU Arm Embedded Toolchain\10 2021.10\bin
@@ -191,12 +225,20 @@ You may obtain a copy of the License at
 
 <p float="left">
   <img src="/images/image1.png" width=300 />
-  <img src="/images/image2.png" width=300 />
-  <img src="/images/image3.png" width=300 />
+  <img src="/images/image4.png" width=300 />
+  <img src="/images/single_vfo_mode.jpg" width=600 />
 </p>
 
-Video showing the AM fix working ..
+ <img src="/images/UV_K5_8_antenna.png" />
+ <img src="/images/UV_K5_8_antenna_text.png" />
 
-<video src="/images/AM_fix.mp4"></video>
+<video src="https://github.com/OneOfEleven/uv-k5-firmware-custom/assets/51590168/921162a7-e9f2-4023-b4d5-526567f8b989"></video>
 
-<video src="https://github.com/OneOfEleven/uv-k5-firmware-custom/assets/51590168/2a3a9cdc-97da-4966-bf0d-1ce6ad09779c"></video>
+# WARNING if trying to use K5/K6 to TX out of band ..
+
+Most of the radios TX energy is concentrated into the harmonics and other spurious carriers rather than within the fundamental ..
+
+<img src="/images/TX_51MHz.png" />
+<img src="/images/TX_70MHz.png" />
+
+You have been warned !

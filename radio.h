@@ -20,101 +20,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/scanner.h"
-#include "dcs.h"
 #include "frequencies.h"
+#include "settings.h"
 
-enum {
-	USER_CH_BAND_MASK = 0x0F << 0,
-	USER_CH_COMPAND   =   3u << 4,  // new
-	USER_CH_SCANLIST2 =   1u << 6,
-	USER_CH_SCANLIST1 =   1u << 7
-};
-/*
-enum {
-	RADIO_CHANNEL_UP   = 0x01u,
-	RADIO_CHANNEL_DOWN = 0xFFu,
-};
-*/
-enum {
-	BANDWIDTH_WIDE = 0,
-	BANDWIDTH_NARROW
-};
-
-enum ptt_id_e {
-	PTT_ID_OFF = 0,    // OFF
-	PTT_ID_TX_UP,      // BEGIN OF TX
-	PTT_ID_TX_DOWN,    // END OF TX
-	PTT_ID_BOTH,       // BOTH
-	PTT_ID_APOLLO      // Apolo quindar tones
-};
-typedef enum ptt_id_e ptt_id_t;
-
-enum vfo_state_e
-{
-	VFO_STATE_NORMAL = 0,
-	VFO_STATE_BUSY,
-	VFO_STATE_BAT_LOW,
-	VFO_STATE_TX_DISABLE,
-	VFO_STATE_TIMEOUT,
-	VFO_STATE_ALARM,
-	VFO_STATE_VOLTAGE_HIGH
-};
-typedef enum vfo_state_e vfo_state_t;
-
-typedef struct
-{
-	uint32_t        frequency;
-	dcs_code_type_t code_type;
-	uint8_t         code;
-	uint8_t         padding[2];
-} freq_config_t;
-
-typedef struct vfo_info_t
-{
-	freq_config_t  freq_config_rx;
-	freq_config_t  freq_config_tx;
-	freq_config_t *pRX;
-	freq_config_t *pTX;
-
-	uint32_t       tx_offset_freq;
-	uint16_t       step_freq;
-
-	uint8_t        channel_save;
-
-	uint8_t        tx_offset_freq_dir;
-
-	uint8_t        squelch_open_rssi_thresh;
-	uint8_t        squelch_open_noise_thresh;
-	uint8_t        squelch_close_glitch_thresh;
-	uint8_t        squelch_close_rssi_thresh;
-	uint8_t        squelch_close_noise_thresh;
-	uint8_t        squelch_open_glitch_thresh;
-
-	step_setting_t step_setting;
-	uint8_t        output_power;
-	uint8_t        txp_calculated_setting;
-	bool           frequency_reverse;
-
-	uint8_t        scrambling_type;
-	uint8_t        channel_bandwidth;
-
-	uint8_t        scanlist_1_participation;
-	uint8_t        scanlist_2_participation;
-
-	uint8_t        band;
-
-	uint8_t        dtmf_decoding_enable;
-	ptt_id_t       dtmf_ptt_id_tx_mode;
-
-	uint8_t        busy_channel_lock;
-
-	uint8_t        am_mode;
-
-	uint8_t        compander;
-
-	char           name[16];
-} vfo_info_t;
+extern vfo_info_t      g_vfo_info[2];
 
 extern vfo_info_t     *g_tx_vfo;
 extern vfo_info_t     *g_rx_vfo;
@@ -124,27 +33,29 @@ extern dcs_code_type_t g_selected_code_type;
 extern dcs_code_type_t g_current_code_type;
 extern uint8_t         g_selected_code;
 
-extern step_setting_t  g_step_setting;
-
 extern vfo_state_t     g_vfo_state[2];
 
-bool     RADIO_CheckValidChannel(uint16_t ChNum, bool bCheckScanList, uint8_t RadioNum);
+bool     RADIO_channel_valid(uint16_t ChNum, bool bCheckScanList, uint8_t RadioNum);
 uint8_t  RADIO_FindNextChannel(uint8_t ChNum, scan_state_dir_t Direction, bool bCheckScanList, uint8_t RadioNum);
-void     RADIO_InitInfo(vfo_info_t *pInfo, const uint8_t ChannelSave, const uint32_t Frequency);
-void     RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure);
-void     RADIO_ConfigureSquelchAndOutputPower(vfo_info_t *pInfo);
-void     RADIO_ApplyOffset(vfo_info_t *pInfo);
-void     RADIO_SelectVfos(void);
-void     RADIO_SetupRegisters(bool bSwitchToFunction0);
+void     RADIO_InitInfo(vfo_info_t *p_vfo, const uint8_t ChannelSave, const uint32_t Frequency);
+void     RADIO_configure_channel(const unsigned int VFO, const unsigned int configure);
+#ifdef ENABLE_VOX
+	void RADIO_enable_vox(unsigned int level);
+#endif
+void     RADIO_ConfigureSquelch(vfo_info_t *p_vfo);
+void     RADIO_ConfigureTXPower(vfo_info_t *p_vfo);
+void     RADIO_apply_offset(vfo_info_t *p_vfo, const bool set_pees);
+void     RADIO_select_vfos(void);
+void     RADIO_setup_registers(bool switch_to_function_foreground);
 #ifdef ENABLE_NOAA
 	void RADIO_ConfigureNOAA(void);
 #endif
-void     RADIO_SetTxParameters(void);
+void     RADIO_enableTX(const bool fsk_tx);
 
-void     RADIO_Setg_vfo_state(vfo_state_t State);
+void     RADIO_set_vfo_state(vfo_state_t State);
 void     RADIO_PrepareTX(void);
-void     RADIO_EnableCxCSS(void);
+void     RADIO_enable_CxCSS_tail(void);
 void     RADIO_PrepareCssTX(void);
-void     RADIO_SendEndOfTransmission(void);
+void     RADIO_tx_eot(void);
 
 #endif

@@ -17,11 +17,11 @@
 #include "battery.h"
 #include "driver/backlight.h"
 #include "misc.h"
+#include "settings.h"
 #include "ui/battery.h"
 #include "ui/menu.h"
 #include "ui/ui.h"
 
-uint16_t          g_battery_calibration[6];
 uint16_t          g_usb_current_voltage;
 uint16_t          g_usb_current;
 uint16_t          g_battery_voltages[4];
@@ -32,7 +32,7 @@ bool              g_low_battery;
 bool              g_low_battery_blink;
 uint16_t          g_battery_check_counter;
 
-volatile uint16_t g_power_save_10ms;
+volatile uint16_t g_power_save_tick_10ms;
 
 /*
 Based on real measurement
@@ -86,27 +86,27 @@ void BATTERY_GetReadings(const bool bDisplayBatteryLevel)
 
 	g_battery_display_level = 0;
 
-	if (g_battery_calibration[5] < Voltage)
+	if (g_eeprom.calib.battery[5] < Voltage)
 		g_battery_display_level = 6;
 	else
-	if (g_battery_calibration[4] < Voltage)
+	if (g_eeprom.calib.battery[4] < Voltage)
 		g_battery_display_level = 5;
 	else
-	if (g_battery_calibration[3] < Voltage)
+	if (g_eeprom.calib.battery[3] < Voltage)
 		g_battery_display_level = 4;
 	else
-	if (g_battery_calibration[2] < Voltage)
+	if (g_eeprom.calib.battery[2] < Voltage)
 		g_battery_display_level = 3;
 	else
-	if (g_battery_calibration[1] < Voltage)
+	if (g_eeprom.calib.battery[1] < Voltage)
 		g_battery_display_level = 2;
 	else
-	if (g_battery_calibration[0] < Voltage)
+	if (g_eeprom.calib.battery[0] < Voltage)
 		g_battery_display_level = 1;
 
-	g_battery_voltage_average = (Voltage * 760) / g_battery_calibration[3];
+	g_battery_voltage_average = (Voltage * 760) / g_eeprom.calib.battery[3];
 
-	if ((g_screen_to_display == DISPLAY_MENU) && g_menu_cursor == MENU_VOL)
+	if ((g_current_display_screen == DISPLAY_MENU) && g_menu_cursor == MENU_VOLTAGE)
 		g_update_display = true;
 
 	if (g_usb_current < 501)
@@ -125,7 +125,7 @@ void BATTERY_GetReadings(const bool bDisplayBatteryLevel)
 		{
 			g_update_status  = true;
 			g_update_display = true;
-			backlight_turn_on();
+			BACKLIGHT_turn_on(0);
 		}
 
 		g_charging_with_type_c = true;
@@ -145,6 +145,6 @@ void BATTERY_GetReadings(const bool bDisplayBatteryLevel)
 				UI_DisplayBattery(g_battery_display_level, g_low_battery_blink);
 		}
 
-		g_low_batteryCountdown = 0;
+		g_low_battery_tick_10ms = 0;
 	}
 }

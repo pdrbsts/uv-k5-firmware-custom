@@ -14,10 +14,9 @@
  *     limitations under the License.
  */
 
-#include <string.h>
-
 #include "app/fm.h"
 #include "driver/backlight.h"
+#include "driver/bk1080.h"
 #include "driver/st7565.h"
 #include "external/printf/printf.h"
 #include "misc.h"
@@ -30,110 +29,147 @@
 void UI_DisplayFM(void)
 {
 	unsigned int i;
-	char         String[16];
+	char         str[22];
 
 	memset(g_frame_buffer, 0, sizeof(g_frame_buffer));
 
-	if (g_eeprom.key_lock && g_keypad_locked > 0)
+	#ifdef ENABLE_KEYLOCK
+	if (g_eeprom.config.setting.key_lock && g_keypad_locked > 0)
 	{	// tell user how to unlock the keyboard
-		backlight_turn_on();
-		UI_PrintString("Long press #", 0, LCD_WIDTH, 1, 8);
-		UI_PrintString("to unlock",    0, LCD_WIDTH, 3, 8);
+		BACKLIGHT_turn_on(0);
+		UI_PrintString("Long press #", 0, LCD_WIDTH - 1, 1, 8);
+		UI_PrintString("to unlock",    0, LCD_WIDTH - 1, 3, 8);
 		ST7565_BlitFullScreen();
 		return;
 	}
+	#endif
 
 	// *************************************
 	// upper text line
 	
-	UI_PrintString("FM", 0, 127, 0, 12);
+	UI_PrintString("FM", 0, LCD_WIDTH - 1, 0, 12);
 
 	// *************************************
 	// middle text line
 	
 	if (g_ask_to_save)
 	{
-		const unsigned int freq = g_eeprom.fm_frequency_playing;
-		sprintf(String, "SAVE %u.%u ?", freq / 10, freq % 10);
+		const unsigned int freq = g_eeprom.config.setting.fm_radio.selected_frequency;
+		sprintf(str, "SAVE %u.%u ?", freq / 10, freq % 10);
 	}
 	else
 	if (g_ask_to_delete)
 	{
-		strcpy(String, "DELETE ?");
+		strcpy(str, "DELETE ?");
 	}
 	else
 	{
-		memset(String, 0, sizeof(String));
+		memset(str, 0, sizeof(str));
 
-		if (g_fm_scan_state == FM_SCAN_OFF)
+		if (g_fm_scan_state_dir == FM_SCAN_STATE_DIR_OFF)
 		{
-			if (!g_eeprom.fm_is_channel_mode)
+			if (g_eeprom.config.setting.fm_radio.channel_mode == 0)
 			{
-				for (i = 0; i < ARRAY_SIZE(g_fm_channels); i++)
+				for (i = 0; i < ARRAY_SIZE(g_eeprom.config.setting.fm_channel); i++)
 				{
-					if (g_eeprom.fm_frequency_playing == g_fm_channels[i])
+					if (g_eeprom.config.setting.fm_radio.selected_frequency == g_eeprom.config.setting.fm_channel[i])
 					{
-						sprintf(String, "VFO (CH %u)", 1 + i);
+						sprintf(str, "VFO (CH %u)", 1 + i);
 						break;
 					}
 				}
 
-				if (i >= ARRAY_SIZE(g_fm_channels))
-					strcpy(String, "VFO");
+				if (i >= ARRAY_SIZE(g_eeprom.config.setting.fm_channel))
+					strcpy(str, "VFO");
 			}
 			else
-				sprintf(String, "CH %u", 1 + g_eeprom.fm_selected_channel);
+				sprintf(str, "CH %u", 1 + g_eeprom.config.setting.fm_radio.selected_channel);
 		}
 		else
 		if (!g_fm_auto_scan)
-			strcpy(String, "FREQ SCAN");
+			strcpy(str, "FREQ SCAN");
 		else
-			sprintf(String, "A-SCAN %2u", 1 + g_fm_channel_position);
+			sprintf(str, "A-SCAN %2u", 1 + g_fm_channel_position);
 	}
 
-	UI_PrintString(String, 0, 127, 2, 10);
+	UI_PrintString(str, 0, LCD_WIDTH - 1, 2, 10);
 
 	// *************************************
 	// lower text line
 	
-	memset(String, 0, sizeof(String));
+	memset(str, 0, sizeof(str));
 
 	if (g_ask_to_save)
 	{	// channel mode
 		const unsigned int chan = g_fm_channel_position;
-		const uint32_t     freq = g_fm_channels[chan];
-		UI_GenerateChannelString(String, chan, ' ');
-		if (FM_CheckValidChannel(chan))
-			sprintf(String + strlen(String), " (%u.%u)", freq / 10, freq % 10);
+		const uint32_t     freq = g_eeprom.config.setting.fm_channel[chan];
+		UI_GenerateChannelString(str, chan, ' ');
+		if (FM_check_valid_channel(chan))
+			sprintf(str + strlen(str), " (%u.%u)", freq / 10, freq % 10);
 	}
 	else
-	if (g_eeprom.fm_is_channel_mode && g_input_box_index > 0)
+	if (g_eeprom.config.setting.fm_radio.channel_mode != 0 && g_input_box_index > 0)
 	{	// user is entering a channel number
-		UI_GenerateChannelString(String, g_fm_channel_position, ' ');
+		UI_GenerateChannelString(str, g_fm_channel_position, ' ');
 	}
 	else
 	if (!g_ask_to_delete)
 	{
 		if (g_input_box_index == 0)
 		{	// frequency mode
-			const uint32_t freq = g_eeprom.fm_frequency_playing;
-			NUMBER_ToDigits(freq * 10000, String);
-			UI_DisplayFrequency(String, 23, 4, false, true);
+			const uint32_t freq = g_eeprom.config.setting.fm_radio.selected_frequency;
+			NUMBER_ToDigits(freq * 10000, str);
+			#ifdef ENABLE_TRIM_TRAILING_ZEROS
+				UI_DisplayFrequencyBig(str, 30, 4, false, true, 6);
+			#else
+				UI_DisplayFrequencyBig(str, 23, 4, false, true, 6);
+			#endif
 		}
 		else
 		{	// user is entering a frequency
-			UI_DisplayFrequency(g_input_box, 23, 4, true, false);
+			UI_DisplayFrequencyBig(g_input_box, 23, 4, true, false, 6);
 		}
 	}
 	else
 	{	// delete channel
-		const uint32_t chan = g_eeprom.fm_selected_channel;
-		const uint32_t freq = g_fm_channels[chan];
-		sprintf(String, "CH %u (%u.%u)", 1 + chan, freq / 10, freq % 10);
+		const uint32_t chan = g_eeprom.config.setting.fm_radio.selected_channel;
+		const uint32_t freq = g_eeprom.config.setting.fm_channel[chan];
+		sprintf(str, "CH %u (%u.%u)", 1 + chan, freq / 10, freq % 10);
 	}
 
-	UI_PrintString(String, 0, 127, 4, (strlen(String) >= 8) ? 8 : 10);
+	UI_PrintString(str, 0, LCD_WIDTH - 1, 4, (strlen(str) >= 8) ? 8 : 10);
 	
+	// *************************************
+
+	if (!g_ask_to_delete &&
+	    !g_ask_to_save &&
+	    (g_fm_scan_state_dir != FM_SCAN_STATE_DIR_OFF || g_fm_resume_tick_500ms > 0))
+	{
+		const uint16_t rssi_status = BK1080_ReadRegister(BK1080_REG_10);
+		const uint16_t dev_snr     = BK1080_ReadRegister(BK1080_REG_07);
+
+		const int16_t freq_offset  = (int16_t)dev_snr / 16;
+		const uint8_t snr          = dev_snr & 0x000f;
+
+//		const uint8_t stc          = (rssi_status >> 14) & 1u;
+//		const uint8_t sf_bl        = (rssi_status >> 13) & 1u;
+		const uint8_t afc_railed   = (rssi_status >> 12) & 1u;
+		const uint8_t ste          = (rssi_status >> 9) & 1u;
+		const uint8_t st           = (rssi_status >> 8) & 1u;
+		const uint8_t rssi         =  rssi_status & 0x00ff;
+
+		sprintf(str, "%s %s %c %2udBuV %2u",
+			ste        ? "STE" : "ste",
+			st         ? "ST"  : "st",
+			afc_railed ? 'R'   : 'r',
+			rssi,
+			snr);
+		UI_PrintStringSmall(str, 0, 0, 6);
+
+		sprintf(str, "%c%d", (freq_offset > 0) ? '+' : (freq_offset < 0) ? '-' : ' ', abs(freq_offset));
+		UI_PrintStringSmall(str, 0, 0, 5);
+	}
+
 	// *************************************
 
 	ST7565_BlitFullScreen();

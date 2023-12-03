@@ -19,32 +19,47 @@
 
 void CRC_Init(void)
 {
-	CRC_CR = 0
-		| CRC_CR_CRC_EN_BITS_DISABLE
-		| CRC_CR_INPUT_REV_BITS_NORMAL
-		| CRC_CR_INPUT_INV_BITS_NORMAL
-		| CRC_CR_OUTPUT_REV_BITS_NORMAL
-		| CRC_CR_OUTPUT_INV_BITS_NORMAL
-		| CRC_CR_DATA_WIDTH_BITS_8
-		| CRC_CR_CRC_SEL_BITS_CRC_16_CCITT
-		;
+	CRC_CR =
+		CRC_CR_CRC_EN_BITS_DISABLE    |
+		CRC_CR_INPUT_REV_BITS_NORMAL  |
+		CRC_CR_INPUT_INV_BITS_NORMAL  |
+		CRC_CR_OUTPUT_REV_BITS_NORMAL |
+		CRC_CR_OUTPUT_INV_BITS_NORMAL |
+		CRC_CR_DATA_WIDTH_BITS_8      |
+		CRC_CR_CRC_SEL_BITS_CRC_16_CCITT;
+
 	CRC_IV = 0;
 }
 
-uint16_t CRC_Calculate(const void *pBuffer, uint16_t Size)
+#ifdef ENABLE_MDC1200
+	void CRC_InitReverse(void)
+	{
+		CRC_CR =
+			CRC_CR_CRC_EN_BITS_DISABLE          |
+			CRC_CR_INPUT_REV_BITS_NORMAL        |
+			CRC_CR_INPUT_INV_BITS_BIT_INVERTED  |
+			CRC_CR_OUTPUT_REV_BITS_REVERSED     |
+			CRC_CR_OUTPUT_INV_BITS_BIT_INVERTED |
+			CRC_CR_DATA_WIDTH_BITS_8            |
+			CRC_CR_CRC_SEL_BITS_CRC_16_CCITT;
+
+		CRC_IV = 0;
+	}
+#endif
+
+uint16_t CRC_Calculate(const void *buffer, const unsigned int size)
 {
-	const uint8_t *pData = (const uint8_t *)pBuffer;
-	uint16_t i, Crc;
+	const uint8_t *data = (const uint8_t *)buffer;
+	uint16_t       i;
+	uint16_t       crc;
 
 	CRC_CR = (CRC_CR & ~CRC_CR_CRC_EN_MASK) | CRC_CR_CRC_EN_BITS_ENABLE;
 
-	for (i = 0; i < Size; i++) {
-		CRC_DATAIN = pData[i];
-	}
-	Crc = (uint16_t)CRC_DATAOUT;
+	for (i = 0; i < size; i++)
+		CRC_DATAIN = data[i];
+	crc = (uint16_t)CRC_DATAOUT;
 
 	CRC_CR = (CRC_CR & ~CRC_CR_CRC_EN_MASK) | CRC_CR_CRC_EN_BITS_DISABLE;
 
-	return Crc;
+	return crc;
 }
-
